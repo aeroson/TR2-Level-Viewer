@@ -1,7 +1,5 @@
 
 
-
-
 <b>Features: </b>
 - It parses Tomb Raider 2 level data like models, animation, textures. Then it renders them back in unity3D.
 - It uses data driven shader model instead of fixed function render pipeline. 
@@ -16,16 +14,26 @@
 - Properly scaled level, ready for Unity physics and GI lighting system.
 - Included experimental day-night system.
 
+<b>Upgrades: </b>
 
+- Auto detection of water in level.
+- Added under water caustic lighting effect.
+- Added under water refraction effect.
+- Extended Character Controller with diving-swimming-pulling up support.
+
+<b> Demo</b>
+
+- WebGL build http://tickleheadstudios.com/demo/unity/tr2webgl/
+- Tomb Raider 2 Custom Level https://www.youtube.com/watch?v=P8GPi6-G9CM
 
 <h3>Frequently asked qustions about TR2 Level Viewer</h3>
 
 
 <b>Q. How can I browse a tr2 level file?</b>
 
-Ans.  File browser currently can not change drive. So, place your level  files in same drive where this project or application is located.  For example,
-If this project is located in “C:/Some folder/ Any Folder2/ “  then  you should place your file any whereIn drive C:
-For android phone or tab, files should be placed in internal memory card (sdcard). 
+Ans.  Now you can browse for tr2 level file in PC as well as in android. 
+	Thanks aeroson(Jakub Neuman) for fixing browsing limit.
+	For android phone or tab, files should be placed in internal memory card (sdcard). 
 
 <b>Q. Browser shows files with tr2 extension. But I cannot select it.</b>
 
@@ -37,7 +45,7 @@ Ans.  You can use keyboard + mouse to perform various actions. Basics are follow
 On PC:
 - Run - Up arrow
 - Walk - Num 5
-- Jump - Right mouse button
+- Jump/swim - Right mouse button
 - Look around - Move mouse while pressing left mouse button.
 - Long Jump - Press jump while you are running.
 - Short Jump - Press up arrow + jump same time.

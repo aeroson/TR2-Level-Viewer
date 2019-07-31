@@ -235,7 +235,7 @@ public class MeshModifier  {
 		
 	}
 
-	static public void VertexWeild(Mesh srcmesh)
+	static public Mesh VertexWeild(Mesh srcmesh)
 	{
 		int[] vtxsharedtris = GetSharedTriangles(srcmesh );
 		Vector3[] Vertices = srcmesh.vertices;
@@ -266,7 +266,10 @@ public class MeshModifier  {
 		srcmesh.uv = uv;
 		srcmesh.normals = normals;
 		srcmesh.triangles  = tris;
-	}
+
+        return srcmesh;
+
+    }
 
 	static public int[] GetSharedTriangles(Mesh srcmesh )
 	{

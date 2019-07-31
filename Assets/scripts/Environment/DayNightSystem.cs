@@ -14,7 +14,7 @@ public class DayNightSystem : MonoBehaviour {
     float _LightIntensity = 1;
     float _AmbientIntensity = 1;
     float _StartTime = 0;
-	bool _IsDay = true;
+	static bool _IsDay = true;
 	bool _PrevState = false;
 
 	public AudioClip _DayTimeAudio;
@@ -29,6 +29,8 @@ public class DayNightSystem : MonoBehaviour {
 	public static event GUIDayTimeUpdateDelegate OnDayTimeUpdate;
 	Light light; //builtin property light has been deprecated since unity5.
 	public AnimationCurve _IntensitySampler = AnimationCurve.Linear(0,0,1,1);
+	
+	static float _AmbientTint = 0; //Useful for ambient water tint
 	// Use this for initialization
 	void Start () 
 	{
@@ -45,11 +47,11 @@ public class DayNightSystem : MonoBehaviour {
         _LightIntensity = Settings.DayLightIntensity;
 #if (UNITY_5_3_OR_NEWER || UNITY_5_3)
         _LightIntensity = 1.05f;
+		light.shadowNormalBias = 0;
 #endif
         light.intensity = _LightIntensity;
         light.color = _SunLightColor;
         light.shadowStrength = 0.9f;
-        light.shadowNormalBias = 0;
         light.shadowBias = 0;
 
         if (!Settings.EnableIndoorShadow)
@@ -59,13 +61,14 @@ public class DayNightSystem : MonoBehaviour {
 		QualitySettings.shadowDistance = 40000 * Settings.SceneScaling;
 		
 		_AmbientLightColor = RenderSettings.ambientLight;
+		_AmbientTint = 0;// Always initialise all static value at start. Otherwise it will effect unexpectedly.
 		DayNightSettings();
 	}
 	
 	// Update is called once per frame
 	void Update () {
 
-		int sunanglef = (int)(Rotz + (Time.time - _StartTime) * 0.6f) % 360;
+		int sunanglef = (int)(Rotz + (Time.time - _StartTime) * Settings.DayNightTimeSpeed) % 360;
 		//int sunangle = (int)sunanglef % 360;
 
 		Quaternion rot =  Quaternion.Euler(0,0,sunanglef);
@@ -105,8 +108,7 @@ public class DayNightSystem : MonoBehaviour {
 			{
 				intensity = 0.75f;
 			}
-			RenderSettings.ambientLight =  Color.white * intensity;
-			
+			RenderSettings.ambientLight =  new Color(Mathf.Lerp(1, 0.5f, _AmbientTint),1,1)  * intensity;
 		}
 
 		//Debug.DrawLine(LightTarget.position,_Transform.position );
@@ -115,10 +117,7 @@ public class DayNightSystem : MonoBehaviour {
 
 	void DayNightSettings()
 	{
-		RenderSettings.fogColor = new Color(18f/255f,30f/255f,44f/255f,1f);
-		RenderSettings.fogMode = FogMode.ExponentialSquared;
-		RenderSettings.fogDensity = 0.00025f; 
-		RenderSettings.fog = !_IsDay;
+		RenderSettings.fog = true;//!_IsDay;
 		if(light!=null) light.enabled = _IsDay;
 
 		if(_IsDay)
@@ -132,8 +131,10 @@ public class DayNightSystem : MonoBehaviour {
 			_AudioSource.clip =_NightTimeAudio;
 			RenderSettings.ambientLight = Color.white * 0.1f;
 			RenderSettings.skybox = null;
-			
 		}
+		
+		SetFogDensity();
+		
 		if(OnDayNightUpdate!=null) OnDayNightUpdate(_IsDay);
 		_AudioSource.Play();
 	}
@@ -146,5 +147,40 @@ public class DayNightSystem : MonoBehaviour {
 	{
 		OnDayTimeUpdate+=handler;
 	}
-
+	
+	static public void SetAmbientTint(float tint_intensity)
+	{
+		_AmbientTint = tint_intensity;
+		SetFogDensity();
+	}
+	
+	static void SetFogDensity()
+	{
+		if(_AmbientTint == 0)
+		{
+			RenderSettings.fogColor = new Color(18f/255f,30f/255f,44f/255f,1f);
+			RenderSettings.fogMode = FogMode.Linear;
+			RenderSettings.fogEndDistance = 100;
+			RenderSettings.fogStartDistance = 1;
+			if(_IsDay)
+			{
+				RenderSettings.fogDensity = _DayTimeFogDensity; 
+			}
+			else
+			{
+				RenderSettings.fogDensity = _NightTimeFogDensity; 
+				
+			}
+		}
+		else
+		{
+			RenderSettings.fogColor = new Color(0.05f,0.1f,.1f);
+			RenderSettings.fogMode = FogMode.ExponentialSquared;
+			RenderSettings.fogDensity = _UnderWaterFogDensity; 
+		}
+	}
+	
+	static float _DayTimeFogDensity = 0.00025f;
+	static float _NightTimeFogDensity = 0.00025f;
+	static float _UnderWaterFogDensity = 0.08f;
 }

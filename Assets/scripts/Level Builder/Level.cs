@@ -6,10 +6,10 @@ using System.IO;
 public class Level
 {
     static RoomEx[] m_RoomExs = null;
-    static GameObject m_LevelRoot = null;
+    static Transform m_LevelRoot = null;
     static Texture2D m_LevelTextureTile = null;
-    static public Parser.Tr2Level m_leveldata = null;
-    static public string m_LevelName;
+    Parser.Tr2Level m_leveldata = null;
+    static string m_LevelName;
 
     //resources
     static List<Tr2Moveable> m_DynamicPrefabs = null;
@@ -31,26 +31,49 @@ public class Level
 
     public delegate bool AttachBehaviourScript(GameObject AI, int ObjectID, GameObject player, Parser.Tr2Item tr2item);
     public static AttachBehaviourScript m_OnAttachBehabiourScript = AICallBackHandler.OnAttachingBehaviourToObject;
-    public static Material m_SharedMaterial;
-    public Level(Parser.Tr2Level leveldata)
-    {
-        m_leveldata = leveldata;
-        m_LevelRoot = new GameObject("Level " + m_LevelName);
-        //m_LevelRoot.AddComponent(typeof (MeshFilter));
-        //m_LevelRoot.AddComponent(typeof (MeshRenderer));
+    public  Material m_SharedMaterial;
+	public  Material m_SharedMaterialWater;
+	public  Material m_SharedMaterialWaterHolder;
+    public  List<Material> m_InstancedMaterialWaterHolders = new List<Material>();
 
-        if (m_leveldata != null && m_leveldata.NumRooms > 0)
+    public enum FloorAttribute{
+		Water,
+		Ice,
+		Metal,
+		Solid
+	}
+
+    public Level(Parser.Tr2Level leveldata, Material sharedmaterial, Transform roottransform)
+    {
+        m_LevelRoot = roottransform;
+        m_leveldata = leveldata;
+        //if (m_leveldata != null && m_leveldata.NumRooms > 0)
         {
-            m_LevelTextureTile = TextureUV.GenerateTextureTile(m_leveldata);
+            //TextureUV.GenerateTextureTile ismoved to Loader.cs for better responsibility managment 
             //Trying to set assigned render material property, marks shared material as instance.
             //So change property of shared material before assign it to renderer.
-            m_SharedMaterial.mainTexture = m_LevelTextureTile;
+            m_SharedMaterialWater = Resources.Load("water", typeof(Material)) as Material;
+			m_SharedMaterialWaterHolder = Resources.Load("water_holder", typeof(Material)) as Material;
+            Shader waterEffectShader = Resources.Load("WaterEffect", typeof(Shader)) as Shader;
+            //init materials
+            m_SharedMaterial = sharedmaterial;
             m_SharedMaterial.color = new Color(1f, 1f, 1f, 1.0f);
+            m_SharedMaterial.SetFloat("_InSideWater", 0);
+            m_SharedMaterial.SetFloat("_WaterPlaneY", 0);
+
+            m_SharedMaterialWater.mainTexture = m_SharedMaterial.mainTexture;
+            //m_SharedMaterialWater.color = new Color(0.045f, 0.075f,0.090f, 1) ; //should be set by user
+            m_SharedMaterialWaterHolder.mainTexture = m_SharedMaterial.mainTexture;
+			//m_SharedMaterialWaterHolder.color = new Color(0.45f * 0.5f, 0.75f * 0.5f, 0.90f * 0.5f, 1);
+            m_SharedMaterialWaterHolder.SetFloat("_InSideWater", 0);
 
             m_RoomExs = new RoomEx[m_leveldata.NumRooms];
 
-            m_DynamicPrefabs = BuildDynamicPrefabObjects();
-            m_StaticPrefabs = BuildStaticPrefabObjects();
+            Transform PrefavContainer = new GameObject("PrefavContainer").transform;
+            PrefavContainer.parent = m_LevelRoot;
+
+            m_DynamicPrefabs = BuildDynamicPrefabObjects(PrefavContainer);
+            m_StaticPrefabs = BuildStaticPrefabObjects(PrefavContainer);
 
             //determine animation clip size for each movable object
             for (int i = 0; i < m_DynamicPrefabs.Count - 1; i++)
@@ -89,21 +112,86 @@ public class Level
             }
 
             //build rooms
+            //container for water go
+            Transform WaterContainer = new GameObject("WaterContainer").transform;
+            WaterContainer.parent = m_LevelRoot;
+
+            Transform RoomContainer = new GameObject("RoomContainer").transform;
+            RoomContainer.parent = m_LevelRoot;
+
             for (int i = 0; i < m_leveldata.NumRooms; i++)
             {
                 Parser.Tr2Room tr2room = leveldata.Rooms[i];
-                Mesh roommesh = MeshBuilder.CreateRoomMesh(tr2room, m_leveldata);
+                bool has_water = false;
+                Mesh roommesh = MeshBuilder.CreateRoomMesh(tr2room, m_leveldata, ref has_water);
                 Vector3 position = new Vector3(m_leveldata.Rooms[i].info.x, 0, m_leveldata.Rooms[i].info.z);
-                GameObject go = CreateRoom(roommesh, position * Settings.SceneScaling, i);
-                go.transform.parent = m_LevelRoot.transform;
+                GameObject go = CreateRoom(roommesh, position * Settings.SceneScaling, i, m_SharedMaterial, FloorAttribute.Solid);
+                go.transform.parent = RoomContainer;
                 m_RoomExs[i] = go.AddComponent<RoomEx>();
                 //build room object
-                List<GameObject> objects = InstantiateStaticObjects(tr2room, i);
+                List<GameObject> objects = InstantiateStaticObjects(tr2room, i, go.transform);
                 m_RoomExs[i].InitRoom(tr2room, objects);
+
+
+
+
+
+
+
+
+                if ((tr2room.Flags & 1) == 1) //Is room water holder
+                {
+                    //override water holder material
+                    //MeshFilter mf = go.GetComponent<MeshFilter>();
+                    //mf.mesh = MeshModifier.VertexWeild(mf.mesh);
+
+                    MeshRenderer mr = go.GetComponent<MeshRenderer>();
+                    mr.sharedMaterial = new Material(waterEffectShader); // Generate material instances for water holder using m_SharedMaterialWaterHolder
+                    mr.receiveShadows = false;
+                    Vector3 center = m_RoomExs[i].GetCenterPoint();
+                    mr.sharedMaterial.SetFloat("_CenterX", center.x);
+                    mr.sharedMaterial.SetFloat("_CenterY", center.y);
+                    mr.sharedMaterial.SetFloat("_CenterZ", center.z);
+                    mr.sharedMaterial.SetFloat("_WaterPlaneY", Mathf.Infinity);
+                    mr.sharedMaterial.SetTexture("_MainTex", m_SharedMaterialWaterHolder.mainTexture);
+                    mr.sharedMaterial.SetColor("_Color", m_SharedMaterialWaterHolder.color);
+                    mr.sharedMaterial.SetFloat("_InSideWater", 0);
+                    m_InstancedMaterialWaterHolders.Add(mr.sharedMaterial);
+
+
+                }
+                else //regular room
+                {
+
+                }
+
+                //create room water surface
+                if (has_water) //surface?
+                {
+                    //create water surface
+                    roommesh = MeshBuilder.CreateRoomWaterMesh(tr2room, m_leveldata);
+                    go = CreateRoom(roommesh, position * Settings.SceneScaling, i, m_SharedMaterialWater, FloorAttribute.Water);
+                    go.name = "water_" + i;
+                    go.transform.parent = WaterContainer;
+                }
+
+
             }
 
-            m_MovableInstances = InstantiateDynamicObjects();
-            SetupTrigers();
+            Transform ObjectContainer = new GameObject("ObjectContainer").transform;
+            ObjectContainer.parent = m_LevelRoot;
+
+            m_MovableInstances = InstantiateDynamicObjects(ObjectContainer);
+            try //
+            {
+                SetupTrigers();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError(e.Message);
+
+            }
+
             //attach components to m_MovableInstances
             for (int i = 0; i < m_MovableInstances.Count; i++)
             {
@@ -116,7 +204,7 @@ public class Level
     //TODO: Determine Unity Pro / Free version and use Transparent/Cutout/Diffuse if pro otherwise
     //use Diffuse in material
 
-    GameObject CreateRoom(Mesh mesh, Vector3 position, int roomidx)
+    GameObject CreateRoom(Mesh mesh, Vector3 position, int roomidx, Material material, FloorAttribute floor_attribute)
     {
 		MeshModifier.CullAlphaFace(ref mesh, m_LevelTextureTile);
 		
@@ -127,29 +215,37 @@ public class Level
 
         go.transform.position = position;
         go.transform.rotation = Quaternion.identity;
-        renderer.sharedMaterial = m_SharedMaterial;
+        renderer.sharedMaterial = material;
 
         //renderer.material.mainTexture = m_LevelTextureTile;
         //renderer.material.color = new Color(1f, 1f, 1f, 1.0f);
         renderer.castShadows = !Settings.EnableIndoorShadow;
         //renderer.material.SetTexture("_BumpMap", Bumptex);*/
-
-        //check for inertia tensor calculation!
-        if (mesh.bounds.extents.y == 0 || mesh.bounds.extents.x == 0 || mesh.bounds.extents.z == 0)
-        {
-            BoxCollider cldr = go.AddComponent<BoxCollider>();
-            cldr.isTrigger = true;
-        }
-        else
-        {
+		
+		
+		if(floor_attribute != FloorAttribute.Water)
+		{
+        	//check for inertia tensor calculation!
+        	if (mesh.bounds.extents.y == 0 || mesh.bounds.extents.x == 0 || mesh.bounds.extents.z == 0)
+        	{
+            	BoxCollider cldr = go.AddComponent<BoxCollider>();
+            	cldr.isTrigger = true;
+        	}
+        	else
+        	{
 #if (UNITY_5_3_OR_NEWER || UNITY_5_3)
-            MeshCollider cldr = go.AddComponent<MeshCollider>();
-            //room mesh tends to be concave, MeshCollider can not be used as trigger for this kind of mesh in unity 5.3 or higher
-            cldr.isTrigger = false;
+            	MeshCollider cldr = go.AddComponent<MeshCollider>();
+            	//room mesh tends to be concave, MeshCollider can not be used as trigger for this kind of mesh in unity 5.3 or higher
+            	cldr.isTrigger = false;
 #else
-             MeshCollider cldr = go.AddComponent<MeshCollider>();
-            cldr.isTrigger = true;
+             	MeshCollider cldr = go.AddComponent<MeshCollider>();
+            	cldr.isTrigger = true;
 #endif
+        	}
+		}
+		else
+		{
+            //go.AddComponent<WaterEffect>(); //no need to WaterEffect.cs for each water surface. use a global Water Effect Controller instead 
         }
 
         /*Rigidbody rb = go.AddComponent<Rigidbody>();
@@ -203,7 +299,7 @@ public class Level
         return parts;
     }
 
-    List<Parser.Tr2StaticMesh> BuildStaticPrefabObjects()
+    List<Parser.Tr2StaticMesh> BuildStaticPrefabObjects(Transform owner)
     {
         List<Parser.Tr2StaticMesh> objects = new List<Parser.Tr2StaticMesh>();
 
@@ -213,17 +309,18 @@ public class Level
             int itemIdx = (int)tr2staticmesh.StartingMesh;
 
             //m_leveldata.StaticMeshes[k]
-            tr2staticmesh.UnityObject = CreateObjectWithID(itemIdx, Vector3.zero, Quaternion.identity, "__staticBase" + k);
-            tr2staticmesh.UnityObject.transform.parent = m_LevelRoot.transform;
-            tr2staticmesh.UnityObject.AddComponent<MeshCollider>();
-            AICondition.SetActive(tr2staticmesh.UnityObject,false);
+            GameObject go = CreateObjectWithID(itemIdx, Vector3.zero, Quaternion.identity, "__staticBase" + k);
+            go.transform.parent = owner;
+            go.AddComponent<MeshCollider>();
+            AICondition.SetActive(go, false);
 
+            tr2staticmesh.UnityObject = go;
             objects.Add(tr2staticmesh);
         }
         return objects;
     }
 
-    List<Tr2Moveable> BuildDynamicPrefabObjects()
+    List<Tr2Moveable> BuildDynamicPrefabObjects(Transform container)
     {
         List<Tr2Moveable> objects = new List<Tr2Moveable>();
 
@@ -247,7 +344,7 @@ public class Level
             //creat a place holder gameObject and make it root transform ;
             tr2movable.UnityObject = new GameObject("prefab type:" + MovableObjectIdx);
             GameObject objRoot = tr2movable.UnityObject;
-            objRoot.transform.parent = m_LevelRoot.transform;
+            objRoot.transform.parent = container;
             objRoot.transform.Translate(Vector3.zero);
             objRoot.transform.Rotate(Vector3.zero);
 
@@ -330,7 +427,7 @@ public class Level
     }
 
 
-    List<GameObject> InstantiateStaticObjects(Parser.Tr2Room tr2room, int roomidx)
+    List<GameObject> InstantiateStaticObjects(Parser.Tr2Room tr2room, int roomidx, Transform owner)
     {
         List<GameObject> objects = new List<GameObject>();
 
@@ -355,7 +452,7 @@ public class Level
 
                     GameObject go = (GameObject)GameObject.Instantiate(m_StaticPrefabs[k].UnityObject, meshPos * Settings.SceneScaling, Quaternion.Euler(rot));
                     go.name = "room" + roomidx + "__staticBase" + k + "__meshBase" + itemIdx;
-                    go.transform.parent = m_LevelRoot.transform;
+                    go.transform.parent = owner;
                     AICondition.SetActive(go,true);
                     objects.Add(go);
                 }
@@ -364,7 +461,7 @@ public class Level
         return objects;
     }
 
-    List<Parser.Tr2Item> InstantiateDynamicObjects()
+    List<Parser.Tr2Item> InstantiateDynamicObjects(Transform owner)
     {
         List<Parser.Tr2Item> objects = new List<Parser.Tr2Item>();
 
@@ -401,9 +498,11 @@ public class Level
                     }
                 }
 
+                if (i >= m_DynamicPrefabs.Count) continue; //bug fix: outof index
+
                 GameObject movableItem = (GameObject)GameObject.Instantiate(m_DynamicPrefabs[i].UnityObject);
                 movableItem.name = "Object";
-                movableItem.transform.parent = m_LevelRoot.transform;
+                movableItem.transform.parent = owner;
                 movableItem.transform.position = new Vector3(m_leveldata.Items[j].x, -m_leveldata.Items[j].y, m_leveldata.Items[j].z) * Settings.SceneScaling;
                 float rot = ((m_leveldata.Items[j].Angle >> 14) & 0x03) * 90;
                 movableItem.transform.rotation = Quaternion.Euler(0, rot, 0);
@@ -420,18 +519,23 @@ public class Level
 
         return objects;
     }
-
+    int m_bPlayerInstanceCount = 0;  //flag to disable multiple player instances
     void InitialiseInstance(Parser.Tr2Item tr2item)
     {
         GameObject go = tr2item.UnityObject;
         go.name += " " + tr2item.ObjectID;
         if (tr2item.ObjectID == 0)
         {
+            if(m_bPlayerInstanceCount == 1)
+            {
+                GameObject.Destroy(tr2item.UnityObject);
+                return;
+            }
             //playable character found!
             m_Player = go;
             m_Player.layer = UnityLayer.Player;
             m_PrevPlayPos = m_Player.transform.position;
-            m_Player.transform.parent = null;
+            m_Player.transform.parent = m_LevelRoot;
 
             if (m_leveldata.Camera != null)
             {
@@ -449,7 +553,7 @@ public class Level
             lt.spotAngle = 70;
             lt.intensity = 5;
 
-            FlashLight.transform.parent = m_Player.transform.FindChild("objPart:0");//.Find("objPart:7").Find("objPart:14");
+            FlashLight.transform.parent = m_Player.transform.Find("objPart:0");//.Find("objPart:7").Find("objPart:14");
             FlashLight.transform.position = FlashLight.transform.parent.position;
             FlashLight.transform.forward = FlashLight.transform.parent.forward;
             lt.enabled = false;
@@ -460,7 +564,13 @@ public class Level
             PlayerCollisionHandler playercollider = go.AddComponent<PlayerCollisionHandler>();
 
             //Initialise Current Active Room for player
+			player.m_AnimStatePlayer = stateplayer;
             player.m_Room = SetRoomForPlayer();
+			if( player.m_Room !=null)
+			{
+				Debug.Log("Player Rooms: " +  player.m_Room .name);
+				player.SetSwimState( player.m_Room );
+			}
             AICondition.SetActive(m_Player, true);
 			
 			//set every game object under player as player
@@ -481,11 +591,13 @@ public class Level
 			light.intensity = 0.3f;
 			light.gameObject.AddComponent<LaraLightStatePlayer>();
 
+            m_bPlayerInstanceCount = 1;
         }
         //check if we have any custom behabiour  script for object
         else if (m_OnAttachBehabiourScript != null && !m_OnAttachBehabiourScript(tr2item.UnityObject, tr2item.ObjectID, m_Player, tr2item))
         {
             go.AddComponent<DefaultStatePlayer>(); // user did not attached any custom behabiour. so use default one
+			AICondition.SetActive(go, true); //Added default activation state active
         }
 
     }
@@ -556,6 +668,15 @@ public class Level
 
     void SetupTrigers()
     {
+		Transform DieZoneContainer = new GameObject("Die Zones").transform;
+        Transform ClimbZoneContainer = new GameObject("Climb Zones").transform;
+        Transform SwitchContainer = new GameObject("Switch Container").transform;
+        Transform LockContainer = new GameObject("Lock Container").transform;
+        DieZoneContainer.parent = m_LevelRoot;
+        ClimbZoneContainer.parent = m_LevelRoot;
+        SwitchContainer.parent = m_LevelRoot;
+        LockContainer.parent = m_LevelRoot;
+
         if (m_leveldata.Rooms.Length > 0 && m_Player != null)
         {
             Transform Lara = m_Player.transform;
@@ -582,8 +703,20 @@ public class Level
                         Parser.Tr2RoomSector[] sector = m_leveldata.Rooms[r].SectorList;
                         int fdid = sector[sectorid].FDindex;
                         ushort fd = m_leveldata.FloorData[fdid];
-
-
+                        
+						/*
+						 * determine sector height info
+						 * 
+						 * 
+						
+						float celh = (float)sector[sectorid].Ceiling * Settings.SceneScaling * 256;
+					    float florh = -(float)sector[sectorid].Floor * Settings.SceneScaling * 256;
+						
+						m_RoomExs[r].m_CeilingHeight = celh;
+						m_RoomExs[r].m_FloorHeight = florh;
+						*/
+						
+						
                         //determine if floor data is a single function
                         //Function:         bits 0..7 (0x00FF)
                         //Sub Function:    	bits 8..14 (0x7F00)
@@ -609,6 +742,7 @@ public class Level
                                     triger_item_index = (int)(fdlist0 & 0x03FF);    //FDfunction Operand (bits 0..9): Item index 
                                                                                     //Debug.Log("Switch ID " + m_leveldata.Items[triger_item_index].ObjectID);
                                     m_leveldata.Items[triger_item_index].UnityObject.name = "Switch";
+                                    m_leveldata.Items[triger_item_index].UnityObject.transform.parent = SwitchContainer;
                                 }
 
                                 //get trigger target
@@ -621,6 +755,7 @@ public class Level
                                     m_leveldata.Items[target_item_index].UnityObject.name = "Target";
                                     m_leveldata.Items[triger_item_index].ActivateObject = m_leveldata.Items[target_item_index].UnityObject;
                                     m_leveldata.Items[triger_item_index].UnityObject.name += "[T" + m_leveldata.Items[target_item_index].ObjectID + "]";
+                                    m_leveldata.Items[triger_item_index].UnityObject.transform.parent = LockContainer;
                                     AddTrigger(m_leveldata.Items[triger_item_index].UnityObject);
                                 }
                                 
@@ -652,7 +787,7 @@ public class Level
                                     GameObject diezone = MeshBuilder.CreateZone("Die Zone");
                                     diezone.transform.position = sector_world_position;
                                     diezone.transform.localScale = new Vector3(1024, 1024, 1024) * Settings.SceneScaling;
-                                    // diezone.transform.parent = m_RoomExs[r].transform;
+                                    diezone.transform.parent = DieZoneContainer;
 
                                     break;
 
@@ -664,7 +799,7 @@ public class Level
                                     GameObject climbzone = MeshBuilder.CreateZone("Climb Zone");
                                     climbzone.transform.position = sector_world_position;
                                     climbzone.transform.localScale = new Vector3(1024, 1024, 1024) * Settings.SceneScaling;
-                                    //climbzone.transform.parent = m_RoomExs[r].transform;
+                                    climbzone.transform.parent = ClimbZoneContainer;
 
                                     break;
                             }
@@ -690,6 +825,27 @@ public class Level
         collider.center = new Vector3(0, 512, 256) * Settings.SceneScaling;
         collider.isTrigger = true;
         return collider;
+    }
+
+
+     public Material GetSharedMaterial()
+    {
+        return m_SharedMaterial;
+    }
+
+    Material GetWaterHolderMaterial()
+    {
+        return m_SharedMaterialWaterHolder;
+    }
+
+    public Material GetSharedWaterMaterial()
+    {
+        return m_SharedMaterialWater;
+    }
+
+     public List<Material> GetInstancedWaterHolderMaterials()
+    {
+        return m_InstancedMaterialWaterHolders;
     }
 
 }

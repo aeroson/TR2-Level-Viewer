@@ -7,7 +7,7 @@ public class Settings  {
 	// These IDs are useful for detecting
 	// individual tr2 movable item.
 	
-	public static bool ForceOpenAllDoors = false;    //Force open all doors in level
+	public static bool ForceOpenAllDoors = true;    //Force open all doors in level
 	public static bool ForceDisableAllBoulder = false;  //Force disable all boulder in level
 	
 	public static bool EnableIndoorShadow = false; 	//If enabled indoor objects will cast shadow
@@ -16,7 +16,7 @@ public class Settings  {
 													//Otherwise Unity Free features will be used.
 													//If you dont have unity pro set it to false
 	
-	public static float DayNightTimeSpeed = 1.0f;   //Must be >=0
+	public static float DayNightTimeSpeed = 0.1f;   //Must be >=0
 													//When 0 Day Night changes will not happen
 	public static float DayLightIntensity = 0.65f;  	//Controls amount of day light
 	

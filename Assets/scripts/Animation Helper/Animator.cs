@@ -7,10 +7,11 @@ public class KeyFrameData
     public ushort[] data;
     public int numshorts;
 
-    public int startoffset;   // Key frame start offset for an animation in global key frames array
+    public int start_animation_frame_index = 0;
+    public int startoffset;   // Key frame start offset (in number of short) for an animation in global key frames array
     public int framesize;     // key frame size in short
     public int numkeyframe;   // number key frame in animation
-    public float framerate;   // animation frame rate
+    public float time_per_frame;   // animation frame rate
     public bool endofanimation = false;
     public bool bplayer = false;
 }
@@ -25,11 +26,11 @@ public class TRAnimDispatcher
 [System.Serializable]
 public class TRAnimStateChange
 {
-    public List<TRAnimDispatcher> dispatchers = null;
+    public List<Parser.Tr2AnimDispatch> tr2dispatchers = null;
     public int stateid = -1;
     public TRAnimStateChange()
     {
-        dispatchers = new List<TRAnimDispatcher>();
+        tr2dispatchers = new List<Parser.Tr2AnimDispatch>();
     }
 }
 [System.Serializable]
@@ -37,13 +38,15 @@ public class TRAnimationClip
 {
     //public AnimationClip animation;
     public AnimationClip clip;
-
+    public int index = -1;
     public int stateid = -1;
     public List<TRAnimStateChange> statechanges = null;
     public AnimationState state = null;
     public float starttime = 0.0f;
     public float endtime = 0.0f;
     public float framerate = 1.0f;
+    public float time_per_frame = 0;
+    public int start_animation_frame_index = 0;
 
     public TRAnimationClip(AnimationClip clip, int forsate)
     {
@@ -55,13 +58,7 @@ public class TRAnimationClip
     //Get time of key frame time
 	public float GetAnimationFrameTime(int frame)
 	{
-		float retval = 0;
-		if (clip != null) 
-		{
-			retval = frame * clip.frameRate;
-		}
-
-		return retval;
+		return frame * time_per_frame;
 	}
 }
 
@@ -83,8 +80,9 @@ public class Animator
         //each frame chunk contain sequential  data [key] for all of the transform of this object
         //Now question is how many animation clips there are ? 
 
-        KeyFrameData keyframeinfo = CalculateAnimationKeyFrameData(trclipoffset, leveldata);
-        bool shortanimation = false;
+        //KeyFrameData keyframeinfo = CalculateAnimationKeyFrameData(trclipoffset, leveldata);
+
+        /*bool shortanimation = false;
         if (keyframeinfo.numkeyframe < 15)
         {
             shortanimation = true;
@@ -99,14 +97,14 @@ public class Animator
         }
 
         //Debug.Log("ID: " + tr2movable.ObjectID + " trclipoffset: " + trclipoffset);
+        */
 
 
-        //[0][0][0][0][0][0][0][0][0][0]
         for (int clipid = 0; clipid < tr2movable.NumClips; clipid++)
         {
             //if(shortanimation && clipid > 5) break;
 
-            keyframeinfo = CalculateAnimationKeyFrameData(trclipoffset, leveldata);
+            KeyFrameData keyframeinfo = CalculateAnimationKeyFrameData(trclipoffset, leveldata);
             Parser.Tr2Animation tr2animation = leveldata.Animations[trclipoffset];
 
             AnimationCurve curvRelX = null;
@@ -247,9 +245,9 @@ public class Animator
                             curvRelY.AddKey(0, -ItemAnimY);
                             curvRelZ.AddKey(0, ItemAnimZ);
 
-                            curvRelX.AddKey(1 * keyframeinfo.framerate, ItemAnimX);
-                            curvRelY.AddKey(1 * keyframeinfo.framerate, -ItemAnimY);
-                            curvRelZ.AddKey(1 * keyframeinfo.framerate, ItemAnimZ);
+                            curvRelX.AddKey(1 * keyframeinfo.time_per_frame, ItemAnimX);
+                            curvRelY.AddKey(1 * keyframeinfo.time_per_frame, -ItemAnimY);
+                            curvRelZ.AddKey(1 * keyframeinfo.time_per_frame, ItemAnimZ);
                         }
                         else
                         {
@@ -257,9 +255,9 @@ public class Animator
                             if (keylength > 0)
                             {
 
-                                Keyframe kx = new Keyframe(keylength * keyframeinfo.framerate, ItemAnimX, Mathf.Infinity, Mathf.Infinity);
-                                Keyframe ky = new Keyframe(keylength * keyframeinfo.framerate, -ItemAnimY, Mathf.Infinity, Mathf.Infinity);
-                                Keyframe kz = new Keyframe(keylength * keyframeinfo.framerate, ItemAnimZ, Mathf.Infinity, Mathf.Infinity);
+                                Keyframe kx = new Keyframe(keylength * keyframeinfo.time_per_frame, ItemAnimX, Mathf.Infinity, Mathf.Infinity);
+                                Keyframe ky = new Keyframe(keylength * keyframeinfo.time_per_frame, -ItemAnimY, Mathf.Infinity, Mathf.Infinity);
+                                Keyframe kz = new Keyframe(keylength * keyframeinfo.time_per_frame, ItemAnimZ, Mathf.Infinity, Mathf.Infinity);
                                 curvRelX.AddKey(kx);
                                 curvRelY.AddKey(ky);
                                 curvRelZ.AddKey(kz);
@@ -290,10 +288,10 @@ public class Animator
                         curvRelRotZ[transformId].AddKey(0, finalrot.z);
                         curvRelRotW[transformId].AddKey(0, finalrot.w);
 
-                        curvRelRotX[transformId].AddKey(keyframeinfo.framerate, finalrot.x);
-                        curvRelRotY[transformId].AddKey(keyframeinfo.framerate, finalrot.y);
-                        curvRelRotZ[transformId].AddKey(keyframeinfo.framerate, finalrot.z);
-                        curvRelRotW[transformId].AddKey(keyframeinfo.framerate, finalrot.w);
+                        curvRelRotX[transformId].AddKey(keyframeinfo.time_per_frame, finalrot.x);
+                        curvRelRotY[transformId].AddKey(keyframeinfo.time_per_frame, finalrot.y);
+                        curvRelRotZ[transformId].AddKey(keyframeinfo.time_per_frame, finalrot.z);
+                        curvRelRotW[transformId].AddKey(keyframeinfo.time_per_frame, finalrot.w);
                     }
                     else
                     {
@@ -301,10 +299,10 @@ public class Animator
                         if (keylength > 0)
                         {
                             //FIX: set outTangent and inTangent to Mathf.Infinity
-                            Keyframe kfrotx = new Keyframe(keylength * keyframeinfo.framerate, finalrot.x, Mathf.Infinity, Mathf.Infinity);
-                            Keyframe kfroty = new Keyframe(keylength * keyframeinfo.framerate, finalrot.y, Mathf.Infinity, Mathf.Infinity);
-                            Keyframe kfrotz = new Keyframe(keylength * keyframeinfo.framerate, finalrot.z, Mathf.Infinity, Mathf.Infinity);
-                            Keyframe kfrotw = new Keyframe(keylength * keyframeinfo.framerate, finalrot.w, Mathf.Infinity, Mathf.Infinity);
+                            Keyframe kfrotx = new Keyframe(keylength * keyframeinfo.time_per_frame, finalrot.x, Mathf.Infinity, Mathf.Infinity);
+                            Keyframe kfroty = new Keyframe(keylength * keyframeinfo.time_per_frame, finalrot.y, Mathf.Infinity, Mathf.Infinity);
+                            Keyframe kfrotz = new Keyframe(keylength * keyframeinfo.time_per_frame, finalrot.z, Mathf.Infinity, Mathf.Infinity);
+                            Keyframe kfrotw = new Keyframe(keylength * keyframeinfo.time_per_frame, finalrot.w, Mathf.Infinity, Mathf.Infinity);
 
                             curvRelRotX[transformId].AddKey(kfrotx);
                             curvRelRotY[transformId].AddKey(kfroty);
@@ -373,11 +371,13 @@ public class Animator
             }
 
             TRAnimationClip tranimclip = new TRAnimationClip(animClip, leveldata.Animations[clipid].StateID);
+            tranimclip.time_per_frame = keyframeinfo.time_per_frame;
             tranimclip.starttime = 0.0f;
-            tranimclip.endtime = keyframeinfo.numkeyframe * keyframeinfo.framerate;
-            tranimclip.framerate = (7.0f - tr2animation.FrameRate);
+            tranimclip.endtime = keyframeinfo.numkeyframe * tranimclip.time_per_frame;
+            tranimclip.framerate = 7 - tr2animation.FrameRate;// 1f / tranimclip.time_per_frame ;
+            tranimclip.index = clipid;
+            tranimclip.start_animation_frame_index = keyframeinfo.start_animation_frame_index;
             tranimclips.Add(tranimclip);
-
             //goto next clip
             trclipoffset++;
         }
@@ -427,7 +427,7 @@ public class Animator
         tr2framedata.data = leveldata.Frames;
         tr2framedata.startoffset = (int)tr2animation.FrameOffset / 2;
         tr2framedata.framesize = (int)tr2animation.FrameSize;  // num shorts of this frame step
-        tr2framedata.framerate = 1.0f / ((7.0f - tr2animation.FrameRate) * 4.0f);
+        tr2framedata.time_per_frame = (float)tr2animation.FrameRate / 30f;
 
         if (animid < (int)leveldata.NumAnimations - 1)
         {
@@ -448,6 +448,10 @@ public class Animator
         {
             tr2framedata.numkeyframe = 0;
         }
+
+        tr2framedata.start_animation_frame_index = tr2animation.FrameStart;// tr2animation (int)tr2framedata.startoffset / tr2framedata.framesize;
+
+       // tr2framedata.numkeyframe = (tr2animation.FrameEnd - tr2animation.FrameStart) + 1;
 
         //if(tr2framedata.numkeyframe > 15)
         //Debug.Log("numkeyframe: " + tr2framedata.numkeyframe + " NextAnimation:" + tr2animation.NextAnimation);
